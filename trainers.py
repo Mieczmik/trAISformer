@@ -279,7 +279,7 @@ class Trainer:
             # ==========================================================================================
             # ==========================================================================================
             raw_model = model.module if hasattr(self.model, "module") else model
-            seqs, masks, seqlens, mmsis, time_starts = iter(aisdls["test"]).next()
+            seqs, masks, seqlens, mmsis, time_starts = next(iter(aisdls["test"]))
             n_plots = 7
             init_seqlen = INIT_SEQLEN
             seqs_init = seqs[:n_plots, :init_seqlen, :].to(self.device)

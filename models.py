@@ -106,6 +106,8 @@ class TrAISformer(nn.Module):
         self.lon_size = config.lon_size
         self.sog_size = config.sog_size
         self.cog_size = config.cog_size
+        self.ctp_size = config.ctp_size
+        self.dist_size = config.dist_size
         self.full_size = config.full_size
         self.n_lat_embd = config.n_lat_embd
         self.n_lon_embd = config.n_lon_embd
