@@ -1,0 +1,110 @@
+2025-07-15 13:44:30,672 - models - number of parameters: 2.310881e+08
+2025-07-15 13:45:32,011 - root - Training, epoch 1, loss 20.93530, lr 6.000000e-05.
+2025-07-15 13:45:37,541 - root - Valid, epoch 1, loss 14.92130.
+2025-07-15 13:45:37,542 - root - Best epoch: 001, saving model to ./results/baltic-pos-pos_vicinity-10-40-blur-True-False-2-1.0-data_size-725-1200-30-72-embd_size-512-512-128-128-head-8-8-bs-128-lr-0.0006-seqlen-12-120/model.pt
+2025-07-15 13:46:44,132 - root - Training, epoch 2, loss 10.23966, lr 5.916336e-04.
+2025-07-15 13:46:49,810 - root - Valid, epoch 2, loss 6.19080.
+2025-07-15 13:46:49,811 - root - Best epoch: 002, saving model to ./results/baltic-pos-pos_vicinity-10-40-blur-True-False-2-1.0-data_size-725-1200-30-72-embd_size-512-512-128-128-head-8-8-bs-128-lr-0.0006-seqlen-12-120/model.pt
+2025-07-15 13:47:57,251 - root - Training, epoch 3, loss 4.26342, lr 6.000000e-05.
+2025-07-15 13:48:02,973 - root - Valid, epoch 3, loss 2.57151.
+2025-07-15 13:48:02,974 - root - Best epoch: 003, saving model to ./results/baltic-pos-pos_vicinity-10-40-blur-True-False-2-1.0-data_size-725-1200-30-72-embd_size-512-512-128-128-head-8-8-bs-128-lr-0.0006-seqlen-12-120/model.pt
+2025-07-15 13:49:10,726 - root - Training, epoch 4, loss 1.90411, lr 5.648106e-04.
+2025-07-15 13:49:16,487 - root - Valid, epoch 4, loss 1.42172.
+2025-07-15 13:49:16,488 - root - Best epoch: 004, saving model to ./results/baltic-pos-pos_vicinity-10-40-blur-True-False-2-1.0-data_size-725-1200-30-72-embd_size-512-512-128-128-head-8-8-bs-128-lr-0.0006-seqlen-12-120/model.pt
+2025-07-15 13:50:23,758 - root - Training, epoch 5, loss 0.74756, lr 6.000000e-05.
+2025-07-15 13:50:29,449 - root - Valid, epoch 5, loss 0.55656.
+2025-07-15 13:50:29,450 - root - Best epoch: 005, saving model to ./results/baltic-pos-pos_vicinity-10-40-blur-True-False-2-1.0-data_size-725-1200-30-72-embd_size-512-512-128-128-head-8-8-bs-128-lr-0.0006-seqlen-12-120/model.pt
+2025-07-15 13:51:36,587 - root - Training, epoch 6, loss 0.10420, lr 5.211947e-04.
+2025-07-15 13:51:42,316 - root - Valid, epoch 6, loss 0.48910.
+2025-07-15 13:51:42,317 - root - Best epoch: 006, saving model to ./results/baltic-pos-pos_vicinity-10-40-blur-True-False-2-1.0-data_size-725-1200-30-72-embd_size-512-512-128-128-head-8-8-bs-128-lr-0.0006-seqlen-12-120/model.pt
+2025-07-15 13:52:49,594 - root - Training, epoch 7, loss -0.43145, lr 1.060834e-04.
+2025-07-15 13:52:55,325 - root - Valid, epoch 7, loss 0.00973.
+2025-07-15 13:52:55,326 - root - Best epoch: 007, saving model to ./results/baltic-pos-pos_vicinity-10-40-blur-True-False-2-1.0-data_size-725-1200-30-72-embd_size-512-512-128-128-head-8-8-bs-128-lr-0.0006-seqlen-12-120/model.pt
+2025-07-15 13:54:02,712 - root - Training, epoch 8, loss -0.78419, lr 4.635518e-04.
+2025-07-15 13:54:08,432 - root - Valid, epoch 8, loss 0.21585.
+2025-07-15 13:55:14,864 - root - Training, epoch 9, loss -1.12633, lr 1.694161e-04.
+2025-07-15 13:55:20,586 - root - Valid, epoch 9, loss -0.13885.
+2025-07-15 13:55:20,587 - root - Best epoch: 009, saving model to ./results/baltic-pos-pos_vicinity-10-40-blur-True-False-2-1.0-data_size-725-1200-30-72-embd_size-512-512-128-128-head-8-8-bs-128-lr-0.0006-seqlen-12-120/model.pt
+2025-07-15 13:56:27,716 - root - Training, epoch 10, loss -1.38325, lr 3.955374e-04.
+2025-07-15 13:56:33,418 - root - Valid, epoch 10, loss 0.09497.
+2025-07-15 13:57:39,878 - root - Training, epoch 11, loss -1.65923, lr 2.410298e-04.
+2025-07-15 13:57:45,609 - root - Valid, epoch 11, loss -0.10505.
+2025-07-15 13:58:51,993 - root - Training, epoch 12, loss -1.84372, lr 3.214644e-04.
+2025-07-15 13:58:57,706 - root - Valid, epoch 12, loss 0.19357.
+2025-07-15 14:00:04,171 - root - Training, epoch 13, loss -2.08592, lr 3.163830e-04.
+2025-07-15 14:00:09,879 - root - Valid, epoch 13, loss 0.05700.
+2025-07-15 14:01:16,370 - root - Training, epoch 14, loss -2.23374, lr 2.460303e-04.
+2025-07-15 14:01:22,088 - root - Valid, epoch 14, loss 0.35102.
+2025-07-15 14:02:28,626 - root - Training, epoch 15, loss -2.45254, lr 3.906973e-04.
+2025-07-15 14:02:34,311 - root - Valid, epoch 15, loss 0.30437.
+2025-07-15 14:03:40,904 - root - Training, epoch 16, loss -2.57015, lr 1.740187e-04.
+2025-07-15 14:03:46,615 - root - Valid, epoch 16, loss 0.57443.
+2025-07-15 14:04:53,194 - root - Training, epoch 17, loss -2.75721, lr 4.592601e-04.
+2025-07-15 14:04:58,940 - root - Valid, epoch 17, loss 0.62226.
+2025-07-15 14:06:05,411 - root - Training, epoch 18, loss -2.84523, lr 1.099961e-04.
+2025-07-15 14:06:11,155 - root - Valid, epoch 18, loss 0.81588.
+2025-07-15 14:07:17,615 - root - Training, epoch 19, loss -3.00656, lr 5.177234e-04.
+2025-07-15 14:07:23,365 - root - Valid, epoch 19, loss 0.94467.
+2025-07-15 14:08:29,858 - root - Training, epoch 20, loss -3.05574, lr 6.000000e-05.
+2025-07-15 14:08:35,609 - root - Valid, epoch 20, loss 1.08427.
+2025-07-15 14:09:42,208 - root - Training, epoch 21, loss -3.18969, lr 5.623798e-04.
+2025-07-15 14:09:47,939 - root - Valid, epoch 21, loss 1.26771.
+2025-07-15 14:10:54,422 - root - Training, epoch 22, loss -3.22038, lr 6.000000e-05.
+2025-07-15 14:11:00,163 - root - Valid, epoch 22, loss 1.32775.
+2025-07-15 14:12:06,647 - root - Training, epoch 23, loss -3.33241, lr 5.903976e-04.
+2025-07-15 14:12:12,392 - root - Valid, epoch 23, loss 1.56896.
+2025-07-15 14:13:18,813 - root - Training, epoch 24, loss -3.33992, lr 6.000000e-05.
+2025-07-15 14:13:24,546 - root - Valid, epoch 24, loss 1.58999.
+2025-07-15 14:14:31,001 - root - Training, epoch 25, loss -3.43972, lr 5.999998e-04.
+2025-07-15 14:14:36,724 - root - Valid, epoch 25, loss 1.85388.
+2025-07-15 14:15:43,238 - root - Training, epoch 26, loss -3.42477, lr 6.000000e-05.
+2025-07-15 14:15:48,971 - root - Valid, epoch 26, loss 1.78037.
+2025-07-15 14:16:55,667 - root - Training, epoch 27, loss -3.51714, lr 5.905776e-04.
+2025-07-15 14:17:01,397 - root - Valid, epoch 27, loss 2.13429.
+2025-07-15 14:18:07,922 - root - Training, epoch 28, loss -3.50648, lr 6.000000e-05.
+2025-07-15 14:18:13,658 - root - Valid, epoch 28, loss 1.98988.
+2025-07-15 14:19:20,273 - root - Training, epoch 29, loss -3.57156, lr 5.627285e-04.
+2025-07-15 14:19:25,995 - root - Valid, epoch 29, loss 2.28209.
+2025-07-15 14:20:32,556 - root - Training, epoch 30, loss -3.56654, lr 6.000000e-05.
+2025-07-15 14:20:38,311 - root - Valid, epoch 30, loss 2.20141.
+2025-07-15 14:21:44,901 - root - Training, epoch 31, loss -3.63147, lr 5.182186e-04.
+2025-07-15 14:21:50,627 - root - Valid, epoch 31, loss 2.51577.
+2025-07-15 14:22:57,145 - root - Training, epoch 32, loss -3.61402, lr 1.094389e-04.
+2025-07-15 14:23:02,885 - root - Valid, epoch 32, loss 2.36679.
+2025-07-15 14:24:09,392 - root - Training, epoch 33, loss -3.67602, lr 4.598704e-04.
+2025-07-15 14:24:15,133 - root - Valid, epoch 33, loss 2.61947.
+2025-07-15 14:25:21,696 - root - Training, epoch 34, loss -3.65701, lr 1.733649e-04.
+2025-07-15 14:25:27,443 - root - Valid, epoch 34, loss 2.50575.
+2025-07-15 14:26:33,920 - root - Training, epoch 35, loss -3.69841, lr 3.913841e-04.
+2025-07-15 14:26:39,683 - root - Valid, epoch 35, loss 2.78232.
+2025-07-15 14:27:46,202 - root - Training, epoch 36, loss -3.70804, lr 2.453215e-04.
+2025-07-15 14:27:51,921 - root - Valid, epoch 36, loss 2.69114.
+2025-07-15 14:28:58,533 - root - Training, epoch 37, loss -3.72705, lr 3.171027e-04.
+2025-07-15 14:29:04,296 - root - Valid, epoch 37, loss 2.94018.
+2025-07-15 14:30:10,989 - root - Training, epoch 38, loss -3.74067, lr 3.207454e-04.
+2025-07-15 14:30:16,751 - root - Valid, epoch 38, loss 2.85573.
+2025-07-15 14:31:23,355 - root - Training, epoch 39, loss -3.76079, lr 2.417367e-04.
+2025-07-15 14:31:29,093 - root - Valid, epoch 39, loss 3.06783.
+2025-07-15 14:32:35,640 - root - Training, epoch 40, loss -3.77448, lr 3.948539e-04.
+2025-07-15 14:32:41,384 - root - Valid, epoch 40, loss 2.96885.
+2025-07-15 14:33:48,129 - root - Training, epoch 41, loss -3.78827, lr 1.700654e-04.
+2025-07-15 14:33:53,884 - root - Valid, epoch 41, loss 3.20311.
+2025-07-15 14:35:00,511 - root - Training, epoch 42, loss -3.81490, lr 4.629471e-04.
+2025-07-15 14:35:06,281 - root - Valid, epoch 42, loss 3.15319.
+2025-07-15 14:36:12,803 - root - Training, epoch 43, loss -3.81665, lr 1.066340e-04.
+2025-07-15 14:36:18,571 - root - Valid, epoch 43, loss 3.29083.
+2025-07-15 14:37:25,179 - root - Training, epoch 44, loss -3.84901, lr 5.207072e-04.
+2025-07-15 14:37:30,964 - root - Valid, epoch 44, loss 3.35100.
+2025-07-15 14:38:37,755 - root - Training, epoch 45, loss -3.83074, lr 6.000000e-05.
+2025-07-15 14:38:43,518 - root - Valid, epoch 45, loss 3.40663.
+2025-07-15 14:39:50,124 - root - Training, epoch 46, loss -3.87344, lr 5.644711e-04.
+2025-07-15 14:39:55,864 - root - Valid, epoch 46, loss 3.51964.
+2025-07-15 14:41:02,609 - root - Training, epoch 47, loss -3.84974, lr 6.000000e-05.
+2025-07-15 14:41:08,382 - root - Valid, epoch 47, loss 3.51481.
+2025-07-15 14:42:15,010 - root - Training, epoch 48, loss -3.90074, lr 5.914637e-04.
+2025-07-15 14:42:20,809 - root - Valid, epoch 48, loss 3.69537.
+2025-07-15 14:43:27,629 - root - Training, epoch 49, loss -3.87447, lr 6.000000e-05.
+2025-07-15 14:43:33,410 - root - Valid, epoch 49, loss 3.62386.
+2025-07-15 14:44:40,116 - root - Training, epoch 50, loss -3.92646, lr 5.999732e-04.
+2025-07-15 14:44:45,882 - root - Valid, epoch 50, loss 3.79057.
+2025-07-15 14:44:46,906 - root - Last epoch: 049, saving model to ./results/baltic-pos-pos_vicinity-10-40-blur-True-False-2-1.0-data_size-725-1200-30-72-embd_size-512-512-128-128-head-8-8-bs-128-lr-0.0006-seqlen-12-120/model.pt

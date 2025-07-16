@@ -33,8 +33,9 @@ from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data.dataloader import DataLoader
 from torch.nn import functional as F
 import utils
+import mlflow
 
-from trAISformer import TB_LOG
+from trAISformer import TB_LOG, MLFLOW_LOG
 
 logger = logging.getLogger(__name__)
 
@@ -59,13 +60,13 @@ def sample(model,
 
         # logits.shape: (batch_size, seq_len, data_size)
         logits, _ = model(seqs_cond)
-        d2inf_pred = torch.zeros((logits.shape[0], 4)).to(seqs.device) + 0.5
+        d2inf_pred = torch.zeros((logits.shape[0], 6)).to(seqs.device) + 0.5
 
         # pluck the logits at the final step and scale by temperature
         logits = logits[:, -1, :] / temperature  # (batch_size, data_size)
 
-        lat_logits, lon_logits, sog_logits, cog_logits = \
-            torch.split(logits, (model.lat_size, model.lon_size, model.sog_size, model.cog_size), dim=-1)
+        lat_logits, lon_logits, sog_logits, cog_logits, ctp_logits, dtp_logits = \
+            torch.split(logits, (model.lat_size, model.lon_size, model.sog_size, model.cog_size, model.ctp_size, model.dtp_size), dim=-1)
 
         # optionally crop probabilities to only the top k options
         if sample_mode in ("pos_vicinity",):
@@ -79,12 +80,16 @@ def sample(model,
             lon_logits = utils.top_k_logits(lon_logits, top_k)
             sog_logits = utils.top_k_logits(sog_logits, top_k)
             cog_logits = utils.top_k_logits(cog_logits, top_k)
+            ctp_logits = utils.top_k_logits(ctp_logits, top_k)
+            dtp_logits = utils.top_k_logits(dtp_logits, top_k)
 
         # apply softmax to convert to probabilities
         lat_probs = F.softmax(lat_logits, dim=-1)
         lon_probs = F.softmax(lon_logits, dim=-1)
         sog_probs = F.softmax(sog_logits, dim=-1)
         cog_probs = F.softmax(cog_logits, dim=-1)
+        ctp_probs = F.softmax(ctp_logits, dim=-1)
+        dtp_probs = F.softmax(dtp_logits, dim=-1)
 
         # sample from the distribution or take the most likely
         if sample:
@@ -92,13 +97,17 @@ def sample(model,
             lon_ix = torch.multinomial(lon_probs, num_samples=1)
             sog_ix = torch.multinomial(sog_probs, num_samples=1)
             cog_ix = torch.multinomial(cog_probs, num_samples=1)
+            ctp_ix = torch.multinomial(ctp_probs, num_samples=1)
+            dtp_ix = torch.multinomial(dtp_probs, num_samples=1)
         else:
             _, lat_ix = torch.topk(lat_probs, k=1, dim=-1)
             _, lon_ix = torch.topk(lon_probs, k=1, dim=-1)
             _, sog_ix = torch.topk(sog_probs, k=1, dim=-1)
             _, cog_ix = torch.topk(cog_probs, k=1, dim=-1)
+            _, ctp_ix = torch.topk(ctp_probs, k=1, dim=-1)
+            _, dtp_ix = torch.topk(dtp_probs, k=1, dim=-1)
 
-        ix = torch.cat((lat_ix, lon_ix, sog_ix, cog_ix), dim=-1)
+        ix = torch.cat((lat_ix, lon_ix, sog_ix, cog_ix, ctp_ix, dtp_ix), dim=-1)
         # convert to x (range: [0,1))
         x_sample = (ix.float() + d2inf_pred) / model.att_sizes
 
@@ -121,7 +130,7 @@ class TrainerConfig:
     warmup_tokens = 375e6  # these two numbers come from the GPT-3 paper, but may not be good defaults elsewhere
     final_tokens = 260e9  # (at what point we reach 10% of original LR)
     # checkpoint settings
-    ckpt_path = None
+    # ckpt_path = None
     num_workers = 0  # for DataLoader
 
     def __init__(self, **kwargs):
@@ -143,12 +152,15 @@ class Trainer:
         self.aisdls = aisdls
         self.INIT_SEQLEN = INIT_SEQLEN
 
-    def save_checkpoint(self, best_epoch):
+    def save_checkpoint(self, epoch, best=False, final=False):
         # DataParallel wrappers keep raw model object in .module attribute
         raw_model = self.model.module if hasattr(self.model, "module") else self.model
         #         logging.info("saving %s", self.config.ckpt_path)
-        logging.info(f"Best epoch: {best_epoch:03d}, saving model to {self.config.ckpt_path}")
-        torch.save(raw_model.state_dict(), self.config.ckpt_path)
+        local_path = os.path.join(self.savedir, f"{'best' if best else 'last' if final else str(epoch).zfill(3)}_model.pt")
+        logging.info(f"Best epoch: {epoch:03d}, saving model to {local_path}")
+        torch.save(raw_model.state_dict(), local_path)
+        tag = 'best' if best else 'last' if final else f"epoch_{epoch}"
+        mlflow.log_artifact(local_path, artifact_path=f"checkpoints/{tag}")
 
     def train(self):
         model, config, aisdls, INIT_SEQLEN, = self.model, self.config, self.aisdls, self.INIT_SEQLEN
@@ -241,26 +253,37 @@ class Trainer:
                                 tb.add_histogram(f"res_pred.{name}", params, epoch * n_batches + it)
                                 tb.add_histogram(f"res_pred.{name}.grad", params.grad, epoch * n_batches + it)
 
+            epoch_loss     = d_loss / d_n
+            epoch_reg_loss = d_reg_loss / d_n if return_loss_tuple else None
+            
             if is_train:
                 if return_loss_tuple:
                     logging.info(
-                        f"{split}, epoch {epoch + 1}, loss {d_loss / d_n:.5f}, {d_reg_loss / d_n:.5f}, lr {lr:e}.")
+                        f"{split}, epoch {epoch + 1}, loss {epoch_reg_loss:.5f}, {epoch_reg_loss:.5f}, lr {lr:e}.")
                 else:
-                    logging.info(f"{split}, epoch {epoch + 1}, loss {d_loss / d_n:.5f}, lr {lr:e}.")
+                    logging.info(f"{split}, epoch {epoch + 1}, loss {epoch_loss:.5f}, lr {lr:e}.")
             else:
                 if return_loss_tuple:
-                    logging.info(f"{split}, epoch {epoch + 1}, loss {d_loss / d_n:.5f}.")
+                    logging.info(f"{split}, epoch {epoch + 1}, loss {epoch_loss:.5f}.")
                 else:
-                    logging.info(f"{split}, epoch {epoch + 1}, loss {d_loss / d_n:.5f}.")
+                    logging.info(f"{split}, epoch {epoch + 1}, loss {epoch_loss:.5f}.")
 
-            if not is_train:
-                test_loss = float(np.mean(losses))
-                #                 logging.info("test loss: %f", test_loss)
-                return test_loss
+            if MLFLOW_LOG:
+                if is_train:
+                    mlflow.log_metric("train_loss", epoch_loss, step=epoch)
+                    if epoch_reg_loss is not None:
+                        mlflow.log_metric("train_reg_loss", epoch_reg_loss, step=epoch)
+                    mlflow.log_metric("lr", lr, step=epoch)
+                else:
+                    mlflow.log_metric("val_loss", epoch_loss, step=epoch)
+            
+            return epoch_loss
 
         best_loss = float('inf')
         self.tokens = 0  # counter used for learning rate decay
         best_epoch = 0
+        no_improve_count = 0
+        patience = self.config.patience
 
         for epoch in range(config.max_epochs):
 
@@ -269,52 +292,76 @@ class Trainer:
                 test_loss = run_epoch('Valid', epoch=epoch)
 
             # supports early stopping based on the test loss, or just save always if no test set is provided
-            good_model = self.test_dataset is None or test_loss < best_loss
-            if self.config.ckpt_path is not None and good_model:
+            is_best = self.test_dataset is not None and test_loss < best_loss
+            if self.config.savedir is not None and is_best:
                 best_loss = test_loss
-                best_epoch = epoch
-                self.save_checkpoint(best_epoch + 1)
+                self.save_checkpoint(epoch + 1, best=True)
 
-            ## SAMPLE AND PLOT
-            # ==========================================================================================
-            # ==========================================================================================
-            raw_model = model.module if hasattr(self.model, "module") else model
-            seqs, masks, seqlens, mmsis, time_starts = next(iter(aisdls["test"]))
-            n_plots = 7
-            init_seqlen = INIT_SEQLEN
-            seqs_init = seqs[:n_plots, :init_seqlen, :].to(self.device)
-            preds = sample(raw_model,
-                           seqs_init,
-                           96 - init_seqlen,
-                           temperature=1.0,
-                           sample=True,
-                           sample_mode=self.config.sample_mode,
-                           r_vicinity=self.config.r_vicinity,
-                           top_k=self.config.top_k)
+            if self.config.savedir is not None:
+                self.save_checkpoint(epoch + 1, final=True)
 
-            img_path = os.path.join(self.savedir, f'epoch_{epoch + 1:03d}.jpg')
-            plt.figure(figsize=(9, 6), dpi=150)
-            cmap = plt.cm.get_cmap("jet")
-            preds_np = preds.detach().cpu().numpy()
-            inputs_np = seqs.detach().cpu().numpy()
-            for idx in range(n_plots):
-                c = cmap(float(idx) / (n_plots))
-                try:
-                    seqlen = seqlens[idx].item()
-                except:
-                    continue
-                plt.plot(inputs_np[idx][:init_seqlen, 1], inputs_np[idx][:init_seqlen, 0], color=c)
-                plt.plot(inputs_np[idx][:init_seqlen, 1], inputs_np[idx][:init_seqlen, 0], "o", markersize=3, color=c)
-                plt.plot(inputs_np[idx][:seqlen, 1], inputs_np[idx][:seqlen, 0], linestyle="-.", color=c)
-                plt.plot(preds_np[idx][init_seqlen:, 1], preds_np[idx][init_seqlen:, 0], "x", markersize=4, color=c)
-            plt.xlim([-0.05, 1.05])
-            plt.ylim([-0.05, 1.05])
-            plt.savefig(img_path, dpi=150)
-            plt.close()
+            if (epoch + 1) % self.config.save_every == 0:
+                ## SAMPLE AND PLOT
+                # ==========================================================================================
+                # ==========================================================================================
+                raw_model = model.module if hasattr(self.model, "module") else model
+                seqs, masks, seqlens, mmsis, time_starts = next(iter(aisdls["test"]))
+                n_plots = 7
+                init_seqlen = INIT_SEQLEN
+                seqs_init = seqs[:n_plots, :init_seqlen, :].to(self.device)
+                preds = sample(raw_model,
+                            seqs_init,
+                            96 - init_seqlen,
+                            temperature=1.0,
+                            sample=True,
+                            sample_mode=self.config.sample_mode,
+                            r_vicinity=self.config.r_vicinity,
+                            top_k=self.config.top_k)
 
-        # Final state
-        raw_model = self.model.module if hasattr(self.model, "module") else self.model
-        #         logging.info("saving %s", self.config.ckpt_path)
-        logging.info(f"Last epoch: {epoch:03d}, saving model to {self.config.ckpt_path}")
-        save_path = self.config.ckpt_path.replace("model.pt", f"model_{epoch + 1:03d}.pt")
-        torch.save(raw_model.state_dict(), save_path)
+                img_path = os.path.join(self.savedir, f'epoch_{epoch + 1:03d}.jpg')
+                plt.figure(figsize=(9, 6), dpi=150)
+                cmap = plt.cm.get_cmap("jet")
+                preds_np = preds.detach().cpu().numpy()
+                inputs_np = seqs.detach().cpu().numpy()
+                for idx in range(n_plots):
+                    c = cmap(float(idx) / (n_plots))
+                    try:
+                        seqlen = seqlens[idx].item()
+                    except:
+                        continue
+                    plt.plot(inputs_np[idx][:init_seqlen, 1], inputs_np[idx][:init_seqlen, 0], color=c)
+                    plt.plot(inputs_np[idx][:init_seqlen, 1], inputs_np[idx][:init_seqlen, 0], "o", markersize=3, color=c)
+                    plt.plot(inputs_np[idx][:seqlen, 1], inputs_np[idx][:seqlen, 0], linestyle="-.", color=c)
+                    plt.plot(preds_np[idx][init_seqlen:, 1], preds_np[idx][init_seqlen:, 0], "x", markersize=4, color=c)
+                plt.xlim([-0.05, 1.05])
+                plt.ylim([-0.05, 1.05])
+                plt.savefig(img_path, dpi=150)
+                plt.close()
+
+                if MLFLOW_LOG:
+                    mlflow.log_artifact(img_path, artifact_path="plots")
+
+            if test_loss is not None:
+                if test_loss < best_loss:
+                    best_loss = test_loss
+                    best_epoch = epoch
+                    no_improve_count = 0
+                    # zapis „best” modelu
+                    if self.config.savedir is not None:
+                        self.save_checkpoint(epoch + 1, best=True)
+                else:
+                    no_improve_count += 1
+                    logger.info(f"No improvement for {no_improve_count} epoch(s) (patience={patience})")
+                if no_improve_count >= patience:
+                    logger.info(f"Early stopping at epoch {epoch+1} (no improvement for {patience} epochs).")
+                    break
+
+        # # Final state
+        # raw_model = self.model.module if hasattr(self.model, "module") else self.model
+        # #         logging.info("saving %s", self.config.ckpt_path)
+        # logging.info(f"Last epoch: {epoch:03d}, saving model to {self.config.ckpt_path}")
+        # save_path = self.config.ckpt_path.replace("model.pt", f"model_{epoch + 1:03d}.pt")
+        # if MLFLOW_LOG:
+        #     final_path = self.config.ckpt_path.replace("model.pt", f"final_{config.max_epochs:03d}.pt")
+        #     mlflow.log_artifact(final_path, artifact_path="models")
+        # torch.save(raw_model.state_dict(), save_path)

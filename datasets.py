@@ -61,11 +61,11 @@ class AISDataset(Dataset):
             time_start: timestamp of the starting time of the trajectory.
         """
         V = self.l_data[idx]
-        m_v = V["traj"][:,:4] # lat, lon, sog, cog
+        m_v = V["traj"][:,:6] # lat, lon, sog, cog, ctp, dtp
 #         m_v[m_v==1] = 0.9999
         m_v[m_v>0.9999] = 0.9999
         seqlen = min(len(m_v), self.max_seqlen)
-        seq = np.zeros((self.max_seqlen,4))
+        seq = np.zeros((self.max_seqlen,6))
         seq[:seqlen,:] = m_v[:seqlen,:]
         seq = torch.tensor(seq, dtype=torch.float32)
         
@@ -74,7 +74,7 @@ class AISDataset(Dataset):
         
         seqlen = torch.tensor(seqlen, dtype=torch.int)
         mmsi =  torch.tensor(V["mmsi"], dtype=torch.int)
-        time_start = torch.tensor(V["traj"][0,4], dtype=torch.int)
+        time_start = torch.tensor(V["traj"][0,6], dtype=torch.int)
         
         return seq , mask, seqlen, mmsi, time_start
     
@@ -124,10 +124,10 @@ class AISDataset_grad(Dataset):
             time_start: timestamp of the starting time of the trajectory.
         """
         V = self.l_data[idx]
-        m_v = V["traj"][:,:4] # lat, lon, sog, cog
+        m_v = V["traj"][:,:6] # lat, lon, sog, cog, ctp, dtp
         m_v[m_v==1] = 0.9999
         seqlen = min(len(m_v), self.max_seqlen)
-        seq = np.zeros((self.max_seqlen,4))
+        seq = np.zeros((self.max_seqlen,6))
         # lat and lon
         seq[:seqlen,:2] = m_v[:seqlen,:2] 
         # dlat and dlon
@@ -145,6 +145,6 @@ class AISDataset_grad(Dataset):
         
         seqlen = torch.tensor(seqlen, dtype=torch.int)
         mmsi =  torch.tensor(V["mmsi"], dtype=torch.int)
-        time_start = torch.tensor(V["traj"][0,4], dtype=torch.int)
+        time_start = torch.tensor(V["traj"][0,6], dtype=torch.int)
         
         return seq , mask, seqlen, mmsi, time_start

@@ -42,6 +42,10 @@ from torch.utils.data import Dataset, DataLoader
 import models, trainers, datasets, utils
 from config_trAISformer import Config
 
+import mlflow
+import mlflow.pytorch
+
+
 cf = Config()
 TB_LOG = cf.tb_log
 if TB_LOG:
@@ -49,9 +53,22 @@ if TB_LOG:
 
     tb = SummaryWriter()
 
+MLFLOW_LOG = cf.mlflow_log
+
 # make deterministic
 utils.set_seed(42)
 torch.pi = torch.acos(torch.zeros(1)).item() * 2
+
+if MLFLOW_LOG:
+    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://10.90.90.95:5000"))
+    exp_name = f"traisformer_{cf.dataset_name}"
+    if mlflow.get_experiment_by_name(exp_name) is None:
+        mlflow.create_experiment(
+            name=exp_name,
+            artifact_location=f"mlflow-artifacts:/{exp_name}"
+        )
+    mlflow.set_experiment(os.getenv("MLFLOW_EXPERIMENT_NAME", exp_name))
+    mlflow.pytorch.autolog()
 
 if __name__ == "__main__":
 
@@ -117,16 +134,18 @@ if __name__ == "__main__":
 
     ## Training
     # ===============================
-    if cf.retrain:
-        trainer.train()
+    with mlflow.start_run():
+        if cf.retrain:
+            trainer.train()
 
     ## Evaluation
     # ===============================
     # Load the best model
     model.load_state_dict(torch.load(cf.ckpt_path))
+    model.to(cf.device)
 
-    v_ranges = torch.tensor([2, 3, 0, 0]).to(cf.device)
-    v_roi_min = torch.tensor([model.lat_min, -7, 0, 0]).to(cf.device)
+    v_ranges = torch.tensor([2, 3, 0, 0, 0, 0]).to(cf.device)
+    v_roi_min = torch.tensor([model.lat_min, -7, 0, 0, 0, 0]).to(cf.device)
     max_seqlen = init_seqlen + 6 * 4
 
     model.eval()

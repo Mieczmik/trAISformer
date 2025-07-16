@@ -1,0 +1,4 @@
+2025-07-15 13:34:15,617 - models - number of parameters: 2.310881e+08
+2025-07-15 13:35:14,471 - root - Training, epoch 1, loss 20.93530, lr 6.000000e-05.
+2025-07-15 13:35:19,833 - root - Valid, epoch 1, loss 14.92130.
+2025-07-15 13:35:19,834 - root - Best epoch: 001, saving model to ./results/baltic-pos-pos_vicinity-10-40-blur-True-False-2-1.0-data_size-725-1200-30-72-embd_size-512-512-128-128-head-8-8-bs-128-lr-0.0006-seqlen-12-120/model.pt

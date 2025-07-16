@@ -24,10 +24,13 @@ import torch
 class Config():
     retrain = True
     tb_log = False
+    mlflow_log = True
     device = torch.device("cuda:0")
 #     device = torch.device("cpu")
     
-    max_epochs = 100
+    save_every = 5
+    
+    max_epochs = 50
     batch_size = 128
     n_samples = 16
     
@@ -35,7 +38,7 @@ class Config():
     max_seqlen = 120
     min_seqlen = 24
     
-    dataset_name = "baltic"
+    dataset_name = "baltic_small"
 
     if dataset_name == "baltic": #==============================
    
@@ -45,17 +48,45 @@ class Config():
         lon_size = 1200
         sog_size = 30
         cog_size = 72
+        ctp_size = 72
+        dtp_size = 10 # bins = [0, 5, 10, 20, 40, 80, 160, 320, 640, 1280, float("inf")]
 
         
         n_lat_embd = 512
         n_lon_embd = 512
         n_sog_embd = 128
         n_cog_embd = 128
+        n_ctp_embd = 128
+        n_dtp_embd = 128
     
         lat_min = 52.6
         lat_max = 67.1
         lon_min = 9.0
         lon_max = 33.0
+
+    elif dataset_name == "baltic_small": #==============================
+   
+        # When mode == "grad" or "pos_grad", sog and cog are actually dlat and 
+        # dlon    
+        lat_size = 720
+        lon_size = 1180
+        sog_size = 30
+        cog_size = 72
+        ctp_size = 72
+        dtp_size = 10 # bins = [0, 5, 10, 20, 40, 80, 160, 320, 640, 1280, float("inf")]
+
+        
+        n_lat_embd = 512
+        n_lon_embd = 512
+        n_sog_embd = 128
+        n_cog_embd = 128
+        n_ctp_embd = 128
+        n_dtp_embd = 128
+    
+        lat_min = 53.1
+        lat_max = 60.3
+        lon_min = 13.6
+        lon_max = 25.4
 
     elif dataset_name == "ct_dma": #==============================
    
@@ -108,8 +139,8 @@ class Config():
     #===================================================
     n_head = 8
     n_layer = 8
-    full_size = lat_size + lon_size + sog_size + cog_size
-    n_embd = n_lat_embd + n_lon_embd + n_sog_embd + n_cog_embd
+    full_size = lat_size + lon_size + sog_size + cog_size + ctp_size + dtp_size
+    n_embd = n_lat_embd + n_lon_embd + n_sog_embd + n_cog_embd + n_ctp_embd + n_dtp_embd
     # base GPT config, params common to all GPT versions
     embd_pdrop = 0.1
     resid_pdrop = 0.1
@@ -121,6 +152,8 @@ class Config():
     betas = (0.9, 0.95)
     grad_norm_clip = 1.0
     weight_decay = 0.1 # only applied on matmul weights
+    # early stopping
+    patience = 10
     # learning rate decay params: linear warmup followed by cosine decay to 10% of original
     lr_decay = True
     warmup_tokens = 512*20 # these two numbers come from the GPT-3 paper, but may not be good defaults elsewhere
@@ -138,4 +171,4 @@ class Config():
         + f"-seqlen-{init_seqlen}-{max_seqlen}"
     savedir = "./results/"+filename+"/"
     
-    ckpt_path = os.path.join(savedir,"model.pt")   
+    # ckpt_path = os.path.join(savedir,"model.pt")   
