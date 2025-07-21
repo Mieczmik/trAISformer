@@ -19,6 +19,24 @@
 import os
 import pickle
 import torch
+import re
+import random
+
+def get_next_exp_number(results_dir='./results', width=3):
+    dirs = [
+        name for name in os.listdir(results_dir)
+        if os.path.isdir(os.path.join(results_dir, name))
+    ]
+    nums = []
+    # wyciągnij z każdej nazwy początkowy ciąg cyfr
+    for name in dirs:
+        m = re.match(r'^(\d+)', name)
+        if m:
+            nums.append(int(m.group(1)))
+    # oblicz kolejny numer
+    next_num = max(nums, default=0) + 1
+    # zwróć jako zero‑padowany string
+    return str(next_num).zfill(width)
 
 
 class Config():
@@ -28,7 +46,7 @@ class Config():
     device = torch.device("cuda:0")
 #     device = torch.device("cpu")
     
-    save_every = 5
+    save_every = 10
     
     max_epochs = 50
     batch_size = 128
@@ -39,6 +57,8 @@ class Config():
     min_seqlen = 24
     
     dataset_name = "baltic_small"
+
+    bgdf_path = "/home/machineblue/repositories/kalinaintelligence/data/datasets/common/global_oceans_and_seas/goas_v02/baltic/baltic.geojson"
 
     if dataset_name == "baltic": #==============================
    
@@ -64,7 +84,7 @@ class Config():
         lon_min = 9.0
         lon_max = 33.0
 
-    elif dataset_name == "baltic_small": #==============================
+    elif dataset_name == "baltic_small" or dataset_name == "test_baltic_small": #==============================
    
         # When mode == "grad" or "pos_grad", sog and cog are actually dlat and 
         # dlon    
@@ -160,7 +180,9 @@ class Config():
     final_tokens = 260e9 # (at what point we reach 10% of original LR)
     num_workers = 4 # for DataLoader
     
-    filename = f"{dataset_name}"\
+    exp_number = get_next_exp_number('./results', width=3)
+    filename = f"{exp_number}"\
+        + f"-{dataset_name}"\
         + f"-{mode}-{sample_mode}-{top_k}-{r_vicinity}"\
         + f"-blur-{blur}-{blur_learnable}-{blur_n}-{blur_loss_w}"\
         + f"-data_size-{lat_size}-{lon_size}-{sog_size}-{cog_size}"\
@@ -170,5 +192,22 @@ class Config():
         + f"-lr-{learning_rate}"\
         + f"-seqlen-{init_seqlen}-{max_seqlen}"
     savedir = "./results/"+filename+"/"
+
     
-    # ckpt_path = os.path.join(savedir,"model.pt")   
+    ckpt_path = os.path.join(savedir,"best_model.pt")
+
+    @classmethod
+    def get_time_interval(cls):
+        train_path = os.path.join(cls.datadir, cls.trainset_name)
+        with open(train_path, 'rb') as f:
+            l_pred_errors = pickle.load(f)
+        traj1 = random.choice(l_pred_errors)["traj"]
+        traj2 = random.choice(l_pred_errors)["traj"]
+        dt1 = traj1[1, -2] - traj1[0, -2]
+        dt2 = traj2[1, -2] - traj2[0, -2]
+        if dt1 != dt2:
+            raise ValueError(f"Differing time intervals: dt1={dt1}, dt2={dt2}! Check your dataset.")
+        cls.time_interval = dt1
+        print(f"[Config] inferred time_interval = {cls.time_interval}")
+
+Config.get_time_interval()

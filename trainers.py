@@ -22,6 +22,7 @@ References:
 import os
 import math
 import logging
+import time
 
 from tqdm import tqdm
 import numpy as np
@@ -35,7 +36,10 @@ from torch.nn import functional as F
 import utils
 import mlflow
 
-from trAISformer import TB_LOG, MLFLOW_LOG
+from trAISformer import TB_LOG, MLFLOW_LOG, bgdf
+from config_trAISformer import Config
+
+cf = Config()
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +155,8 @@ class Trainer:
         self.model = model.to(device)
         self.aisdls = aisdls
         self.INIT_SEQLEN = INIT_SEQLEN
+
+        self.best_epoch = 0
 
     def save_checkpoint(self, epoch, best=False, final=False):
         # DataParallel wrappers keep raw model object in .module attribute
@@ -281,7 +287,6 @@ class Trainer:
 
         best_loss = float('inf')
         self.tokens = 0  # counter used for learning rate decay
-        best_epoch = 0
         no_improve_count = 0
         patience = self.config.patience
 
@@ -290,6 +295,7 @@ class Trainer:
             run_epoch('Training', epoch=epoch)
             if self.test_dataset is not None:
                 test_loss = run_epoch('Valid', epoch=epoch)
+
 
             # supports early stopping based on the test loss, or just save always if no test set is provided
             is_best = self.test_dataset is not None and test_loss < best_loss
@@ -305,48 +311,37 @@ class Trainer:
                 # ==========================================================================================
                 # ==========================================================================================
                 raw_model = model.module if hasattr(self.model, "module") else model
-                seqs, masks, seqlens, mmsis, time_starts = next(iter(aisdls["test"]))
-                n_plots = 7
-                init_seqlen = INIT_SEQLEN
-                seqs_init = seqs[:n_plots, :init_seqlen, :].to(self.device)
-                preds = sample(raw_model,
-                            seqs_init,
-                            96 - init_seqlen,
-                            temperature=1.0,
-                            sample=True,
-                            sample_mode=self.config.sample_mode,
-                            r_vicinity=self.config.r_vicinity,
-                            top_k=self.config.top_k)
-
                 img_path = os.path.join(self.savedir, f'epoch_{epoch + 1:03d}.jpg')
-                plt.figure(figsize=(9, 6), dpi=150)
-                cmap = plt.cm.get_cmap("jet")
-                preds_np = preds.detach().cpu().numpy()
-                inputs_np = seqs.detach().cpu().numpy()
-                for idx in range(n_plots):
-                    c = cmap(float(idx) / (n_plots))
-                    try:
-                        seqlen = seqlens[idx].item()
-                    except:
-                        continue
-                    plt.plot(inputs_np[idx][:init_seqlen, 1], inputs_np[idx][:init_seqlen, 0], color=c)
-                    plt.plot(inputs_np[idx][:init_seqlen, 1], inputs_np[idx][:init_seqlen, 0], "o", markersize=3, color=c)
-                    plt.plot(inputs_np[idx][:seqlen, 1], inputs_np[idx][:seqlen, 0], linestyle="-.", color=c)
-                    plt.plot(preds_np[idx][init_seqlen:, 1], preds_np[idx][init_seqlen:, 0], "x", markersize=4, color=c)
-                plt.xlim([-0.05, 1.05])
-                plt.ylim([-0.05, 1.05])
-                plt.savefig(img_path, dpi=150)
-                plt.close()
+                fig = Trainer.sample_and_plot(raw_model, cf, self.aisdls, 'valid', bgdf)
+                fig.savefig(img_path)
+
 
                 if MLFLOW_LOG:
                     mlflow.log_artifact(img_path, artifact_path="plots")
 
+                ## Log Heversine metrics
+                # ==========================================================================================
+                # ==========================================================================================
+                pred_errors = Trainer.compute_haversine_val(raw_model, cf, self.aisdls, 'valid')
+                time_interval = cf.time_interval
+                hours = np.array([1, 3, 5, 10, 20])
+                steps = hours * 3600 / time_interval
+                for idx, step in enumerate(steps, start=1):
+                    step = int(step)
+                    if step >= len(pred_errors):
+                        break
+                    err = pred_errors[step]
+                    if TB_LOG:
+                        tb.add_scalar(f"haversine/val_{hours[idx-1]}h", err, epoch)
+                    if MLFLOW_LOG:
+                        mlflow.log_metric(f"val_haversine_{hours[idx-1]}h", err, step=epoch)
+                
+
             if test_loss is not None:
                 if test_loss < best_loss:
                     best_loss = test_loss
-                    best_epoch = epoch
+                    self.best_epoch = epoch
                     no_improve_count = 0
-                    # zapis „best” modelu
                     if self.config.savedir is not None:
                         self.save_checkpoint(epoch + 1, best=True)
                 else:
@@ -355,6 +350,175 @@ class Trainer:
                 if no_improve_count >= patience:
                     logger.info(f"Early stopping at epoch {epoch+1} (no improvement for {patience} epochs).")
                     break
+
+    @staticmethod
+    @torch.no_grad()
+    def compute_haversine_val(model, cf, dataloaders, case):
+        dataloader = dataloaders[case]
+        model.eval()
+        device = cf.device
+        init_seqlen = cf.init_seqlen
+
+        v_ranges  = torch.tensor([model.lat_max-model.lat_min, model.lon_max-model.lon_min, 0, 0, 0, 0], device=device)
+        v_roi_min = torch.tensor([model.lat_min, model.lon_min, 0, 0, 0, 0], device=device)
+        if case == 'test':
+            max_seqlen = init_seqlen + 6 * 5 + 1
+        else:
+            max_seqlen = init_seqlen + 6 * 3 + 1
+        horizon = max_seqlen - init_seqlen
+
+        all_mean, all_mask = [], []
+        for seqs, masks, seqlens, mmsis, time_starts in tqdm(dataloader, desc=f"Haversine_{case}"):
+            seqs = seqs.to(device)
+            masks_ = masks[:, :max_seqlen].to(device)
+            B = seqs.size(0)
+
+            error_ens = torch.zeros(B, horizon, cf.n_samples, device=device)
+            seqs_init = seqs[:, :init_seqlen, :]
+
+            for i in range(cf.n_samples):
+                preds = sample(model,
+                               seqs_init,
+                               horizon,
+                               temperature=1.0,
+                               sample=True,
+                               sample_mode=cf.sample_mode,
+                               r_vicinity=cf.r_vicinity,
+                               top_k=cf.top_k)
+                inputs = seqs[:, :max_seqlen, :]
+                inp_rad = (inputs * v_ranges + v_roi_min) * torch.pi/180
+                pred_rad= (preds  * v_ranges + v_roi_min) * torch.pi/180
+                d = utils.haversine(inp_rad, pred_rad) * masks_
+                error_ens[:, :, i] = d[:, init_seqlen:]
+
+            mean_err = error_ens.mean(dim=-1)    # [B, horizon]
+            all_mean.append(mean_err)
+            all_mask.append(masks_[:, init_seqlen:])
+
+        all_mean  = torch.cat(all_mean, dim=0)   # [N, horizon]
+        all_mask = torch.cat(all_mask, dim=0)  # [N, horizon]
+        summed = (all_mean * all_mask).sum(dim=0)  
+        counts = all_mask.sum(dim=0)
+        pred_errors = (summed / counts).cpu().numpy()
+        return pred_errors
+    
+    @staticmethod
+    @torch.no_grad()
+    def sample_and_plot(model, cf, dataloaders, case, bgdf=None, n_plots=7, figsize=(9, 6), dpi=300):
+        model.eval()
+        device = cf.device
+        init_seqlen = cf.init_seqlen
+        # fetch one batch
+        loader = dataloaders[case]
+        seqs, masks, seqlens, mmsis, time_starts = next(iter(loader))
+        seqs = seqs.to(device)
+        # prepare conditioning
+        seqs_init = seqs[:n_plots, :init_seqlen, :]
+        # sample
+        horizon = 96 - init_seqlen
+        
+        preds = sample(
+            model,
+            seqs_init,
+            horizon,
+            temperature=1.0,
+            sample=True,
+            sample_mode=cf.sample_mode,
+            r_vicinity=cf.r_vicinity,
+            top_k=cf.top_k
+        )
+
+        # prepare for plotting
+        fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+
+        if bgdf is not None:
+            if bgdf.crs is not None and bgdf.crs.to_epsg() != 4326:
+                bgdf = bgdf.to_crs(epsg=4326)
+            bgdf.plot(ax=ax, color="lightblue", edgecolor="blue", alpha=0.5)
+            lat_range = cf.lat_max - cf.lat_min
+            lon_range = cf.lon_max - cf.lon_min
+            def to_plot(coords):
+                lat = cf.lat_min + coords[..., 0] * lat_range
+                lon = cf.lon_min + coords[..., 1] * lon_range
+                return lon, lat
+            ax.set_xlim(cf.lon_min, cf.lon_max)
+            ax.set_ylim(cf.lat_min, cf.lat_max)
+        else:
+            def to_plot(coords):
+                return coords[..., 1], coords[..., 0]
+            ax.set_xlim(-0.05, 1.05)
+            ax.set_ylim(-0.05, 1.05)
+
+        cmap = plt.cm.get_cmap("jet")
+        preds_np = preds.detach().cpu().numpy()
+        inputs_np = seqs.detach().cpu().numpy()
+
+        for idx in range(n_plots):
+            c = cmap(idx / n_plots)
+            try:
+                seqlen = seqlens[idx].item()
+            except:
+                continue
+
+            # historical trajectory
+            lon_h, lat_h = to_plot(inputs_np[idx, :init_seqlen, :2])
+            ax.plot(lon_h, lat_h,      color=c)
+            ax.plot(lon_h, lat_h, "o", markersize=2, color=c)
+
+            # full ground‑truth
+            lon_gt, lat_gt = to_plot(inputs_np[idx, :seqlen, :2])
+            ax.plot(lon_gt, lat_gt, linestyle="-.", color=c)
+
+            # sampled future
+            lon_p, lat_p = to_plot(preds_np[idx, init_seqlen:, :2])
+            ax.plot(lon_p, lat_p, "x", markersize=3, color=c)
+
+        ax.set_xlabel("Lon")
+        ax.set_ylabel("Lat")
+
+        return fig
+    
+
+    @staticmethod
+    @torch.no_grad()
+    def log_batch_inference_time(
+        model,
+        cf,
+        dataloader,
+    ):
+        model.eval()
+        device       = cf.device
+        init_seqlen  = cf.init_seqlen
+        horizon      = 96 - init_seqlen
+
+        # ------------------------ pierwszy batch --------------------------
+        seqs, *_ = next(iter(dataloader))
+        seqs = seqs.to(device)
+        batch_size = seqs.size(0)          # liczba próbek w batchu
+        seqs_init  = seqs[:, :init_seqlen, :]
+
+        # ------------------------ pomiar czasu ----------------------------
+        if device.type == "cuda":
+            torch.cuda.synchronize()
+        t0 = time.perf_counter()
+
+        _ = sample(
+            model,
+            seqs_init,
+            horizon,
+            temperature = 1.0,
+            sample      = True,
+            sample_mode = cf.sample_mode,
+            r_vicinity  = cf.r_vicinity,
+            top_k       = cf.top_k,
+        )
+
+        if device.type == "cuda":
+            torch.cuda.synchronize()
+        elapsed_batch = time.perf_counter() - t0 
+        elapsed_per_sample = elapsed_batch / batch_size
+
+        return elapsed_batch, elapsed_per_sample
 
         # # Final state
         # raw_model = self.model.module if hasattr(self.model, "module") else self.model
