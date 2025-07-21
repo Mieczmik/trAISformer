@@ -288,7 +288,7 @@ class Trainer:
         best_loss = float('inf')
         self.tokens = 0  # counter used for learning rate decay
         no_improve_count = 0
-        patience = self.config.patience
+        patience = float('inf') if self.config.patience <= 0 else self.config.patience
 
         for epoch in range(config.max_epochs):
 
@@ -296,15 +296,6 @@ class Trainer:
             if self.test_dataset is not None:
                 test_loss = run_epoch('Valid', epoch=epoch)
 
-
-            # supports early stopping based on the test loss, or just save always if no test set is provided
-            is_best = self.test_dataset is not None and test_loss < best_loss
-            if self.config.savedir is not None and is_best:
-                best_loss = test_loss
-                self.save_checkpoint(epoch + 1, best=True)
-
-            if self.config.savedir is not None:
-                self.save_checkpoint(epoch + 1, final=True)
 
             if (epoch + 1) % self.config.save_every == 0:
                 ## SAMPLE AND PLOT
@@ -337,19 +328,31 @@ class Trainer:
                         mlflow.log_metric(f"val_haversine_{hours[idx-1]}h", err, step=epoch)
                 
 
+            # supports early stopping based on the test loss, or just save always if no test set is provided
             if test_loss is not None:
-                if test_loss < best_loss:
-                    best_loss = test_loss
+                improved = test_loss < best_loss
+
+                if improved:
+                    best_loss       = test_loss
                     self.best_epoch = epoch
                     no_improve_count = 0
                     if self.config.savedir is not None:
                         self.save_checkpoint(epoch + 1, best=True)
                 else:
                     no_improve_count += 1
-                    logger.info(f"No improvement for {no_improve_count} epoch(s) (patience={patience})")
+                    logger.info(f"No improvement for {no_improve_count} epoch(s) "
+                                f"(patience={patience})")
+
+                if self.config.savedir is not None:
+                    self.save_checkpoint(epoch + 1, final=True)
+
                 if no_improve_count >= patience:
-                    logger.info(f"Early stopping at epoch {epoch+1} (no improvement for {patience} epochs).")
+                    logger.info(f"Early stopping at epoch {epoch + 1} "
+                                f"(no improvement for {patience} epochs).")
                     break
+            else:
+                if self.config.savedir is not None:
+                    self.save_checkpoint(epoch + 1, final=True)
 
     @staticmethod
     @torch.no_grad()
