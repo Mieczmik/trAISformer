@@ -38,7 +38,6 @@ def get_next_exp_number(results_dir='./results', width=3):
     # zwróć jako zero‑padowany string
     return str(next_num).zfill(width)
 
-
 class Config():
     retrain = True
     tb_log = False
