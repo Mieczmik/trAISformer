@@ -57,6 +57,8 @@ def sample(model,
     Take a conditoning sequence of AIS observations seq and predict the next observation,
     feed the predictions back into the model each time. 
     """
+    if model.ctp_size == 0 and model.dtp_size == 0 and model.n_ctp_embd == 0 and model.n_dtp_embd == 0:
+        model_type = 'base'
     max_seqlen = model.get_max_seqlen()
     model.eval()
     for k in range(steps):
@@ -64,13 +66,20 @@ def sample(model,
 
         # logits.shape: (batch_size, seq_len, data_size)
         logits, _ = model(seqs_cond)
-        d2inf_pred = torch.zeros((logits.shape[0], 6)).to(seqs.device) + 0.5
+        if model_type == 'base':
+            d2inf_pred = torch.zeros((logits.shape[0], 4)).to(seqs.device) + 0.5
+        else:
+            d2inf_pred = torch.zeros((logits.shape[0], 6)).to(seqs.device) + 0.5
 
         # pluck the logits at the final step and scale by temperature
         logits = logits[:, -1, :] / temperature  # (batch_size, data_size)
 
-        lat_logits, lon_logits, sog_logits, cog_logits, ctp_logits, dtp_logits = \
-            torch.split(logits, (model.lat_size, model.lon_size, model.sog_size, model.cog_size, model.ctp_size, model.dtp_size), dim=-1)
+        if model_type == 'base':
+            lat_logits, lon_logits, sog_logits, cog_logits, ctp_logits, dtp_logits = \
+                torch.split(logits, (model.lat_size, model.lon_size, model.sog_size, model.cog_size, model.ctp_size, model.dtp_size), dim=-1)
+        else:
+            lat_logits, lon_logits, sog_logits, cog_logits = \
+                torch.split(logits, (model.lat_size, model.lon_size, model.sog_size, model.cog_size), dim=-1)
 
         # optionally crop probabilities to only the top k options
         if sample_mode in ("pos_vicinity",):
@@ -84,16 +93,18 @@ def sample(model,
             lon_logits = utils.top_k_logits(lon_logits, top_k)
             sog_logits = utils.top_k_logits(sog_logits, top_k)
             cog_logits = utils.top_k_logits(cog_logits, top_k)
-            ctp_logits = utils.top_k_logits(ctp_logits, top_k)
-            dtp_logits = utils.top_k_logits(dtp_logits, top_k)
+            if not model_type == 'base':
+                ctp_logits = utils.top_k_logits(ctp_logits, top_k)
+                dtp_logits = utils.top_k_logits(dtp_logits, top_k)
 
         # apply softmax to convert to probabilities
         lat_probs = F.softmax(lat_logits, dim=-1)
         lon_probs = F.softmax(lon_logits, dim=-1)
         sog_probs = F.softmax(sog_logits, dim=-1)
         cog_probs = F.softmax(cog_logits, dim=-1)
-        ctp_probs = F.softmax(ctp_logits, dim=-1)
-        dtp_probs = F.softmax(dtp_logits, dim=-1)
+        if not model_type == 'base':
+            ctp_probs = F.softmax(ctp_logits, dim=-1)
+            dtp_probs = F.softmax(dtp_logits, dim=-1)
 
         # sample from the distribution or take the most likely
         if sample:
@@ -101,17 +112,22 @@ def sample(model,
             lon_ix = torch.multinomial(lon_probs, num_samples=1)
             sog_ix = torch.multinomial(sog_probs, num_samples=1)
             cog_ix = torch.multinomial(cog_probs, num_samples=1)
-            ctp_ix = torch.multinomial(ctp_probs, num_samples=1)
-            dtp_ix = torch.multinomial(dtp_probs, num_samples=1)
+            if not model_type == 'base':
+                ctp_ix = torch.multinomial(ctp_probs, num_samples=1)
+                dtp_ix = torch.multinomial(dtp_probs, num_samples=1)
         else:
             _, lat_ix = torch.topk(lat_probs, k=1, dim=-1)
             _, lon_ix = torch.topk(lon_probs, k=1, dim=-1)
             _, sog_ix = torch.topk(sog_probs, k=1, dim=-1)
             _, cog_ix = torch.topk(cog_probs, k=1, dim=-1)
-            _, ctp_ix = torch.topk(ctp_probs, k=1, dim=-1)
-            _, dtp_ix = torch.topk(dtp_probs, k=1, dim=-1)
+            if not model_type == 'base':
+                _, ctp_ix = torch.topk(ctp_probs, k=1, dim=-1)
+                _, dtp_ix = torch.topk(dtp_probs, k=1, dim=-1)
 
-        ix = torch.cat((lat_ix, lon_ix, sog_ix, cog_ix, ctp_ix, dtp_ix), dim=-1)
+        if not model_type == 'base':
+            ix = torch.cat((lat_ix, lon_ix, sog_ix, cog_ix, ctp_ix, dtp_ix), dim=-1)
+        else:
+            ix = torch.cat((lat_ix, lon_ix, sog_ix, cog_ix), dim=-1)
         # convert to x (range: [0,1))
         x_sample = (ix.float() + d2inf_pred) / model.att_sizes
 
@@ -153,6 +169,8 @@ class Trainer:
 
         self.device = device
         self.model = model.to(device)
+        if self.model.ctp_size == 0 and self.model.dtp_size == 0 and self.model.n_ctp_embd == 0 and self.model.n_dtp_embd == 0:
+            self.model_type = 'base'
         self.aisdls = aisdls
         self.INIT_SEQLEN = INIT_SEQLEN
 
@@ -357,13 +375,22 @@ class Trainer:
     @staticmethod
     @torch.no_grad()
     def compute_haversine_val(model, cf, dataloaders, case):
+        if model.ctp_size == 0 and model.dtp_size == 0 and model.n_ctp_embd == 0 and model.n_dtp_embd == 0:
+            model_type = 'base'
+        else:
+            model_type = None
+        
         dataloader = dataloaders[case]
         model.eval()
         device = cf.device
         init_seqlen = cf.init_seqlen
 
-        v_ranges  = torch.tensor([model.lat_max-model.lat_min, model.lon_max-model.lon_min, 0, 0, 0, 0], device=device)
-        v_roi_min = torch.tensor([model.lat_min, model.lon_min, 0, 0, 0, 0], device=device)
+        if not model_type == 'base':
+            v_ranges  = torch.tensor([model.lat_max-model.lat_min, model.lon_max-model.lon_min, 0, 0, 0, 0], device=device)
+            v_roi_min = torch.tensor([model.lat_min, model.lon_min, 0, 0, 0, 0], device=device)
+        else:
+            v_ranges  = torch.tensor([model.lat_max-model.lat_min, model.lon_max-model.lon_min, 0, 0], device=device)
+            v_roi_min = torch.tensor([model.lat_min, model.lon_min, 0, 0], device=device)
         if case == 'test':
             max_seqlen = init_seqlen + 6 * 5 + 1
         else:

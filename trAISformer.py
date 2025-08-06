@@ -100,6 +100,15 @@ if __name__ == "__main__":
             print('======= Directory to store trained models: ' + cf.savedir)
         utils.new_log(cf.savedir, "log")
 
+        ## Model
+        # ===============================
+        if cf.ctp_size == 0 and cf.dtp_size == 0 and cf.n_ctp_embd == 0 and cf.n_dtp_embd == 0:
+            model = models.BaseTrAISformer(cf, partition_model=None)
+            model_type = 'base'
+        else:
+            model = models.TrAISformer(cf, partition_model=None)
+            model_type = None
+        
         ## Data
         # ===============================
         moving_threshold = 0.05
@@ -125,11 +134,13 @@ if __name__ == "__main__":
             if cf.mode in ("pos_grad", "grad"):
                 aisdatasets[phase] = datasets.AISDataset_grad(Data[phase],
                                                             max_seqlen=cf.max_seqlen + 1,
-                                                            device=cf.device)
+                                                            device=cf.device,
+                                                            model_type=model_type)
             else:
                 aisdatasets[phase] = datasets.AISDataset(Data[phase],
                                                         max_seqlen=cf.max_seqlen + 1,
-                                                        device=cf.device)
+                                                        device=cf.device,
+                                                        model_type=model_type)
             if phase == "test":
                 shuffle = False
             else:
@@ -138,10 +149,6 @@ if __name__ == "__main__":
                                     batch_size=cf.batch_size,
                                     shuffle=shuffle)
         cf.final_tokens = 2 * len(aisdatasets["train"]) * cf.max_seqlen
-
-        ## Model
-        # ===============================
-        model = models.TrAISformer(cf, partition_model=None)
 
         ## Trainer
         # ===============================

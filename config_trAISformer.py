@@ -67,16 +67,16 @@ class Config():
         lon_size = 1200
         sog_size = 30
         cog_size = 72
-        ctp_size = 72
-        dtp_size = 10 # bins = [0, 5, 10, 20, 40, 80, 160, 320, 640, 1280, float("inf")]
+        ctp_size = 0
+        dtp_size = 0 # bins = [0, 5, 10, 20, 40, 80, 160, 320, 640, 1280, float("inf")]
 
         
         n_lat_embd = 512
         n_lon_embd = 512
         n_sog_embd = 128
         n_cog_embd = 128
-        n_ctp_embd = 128
-        n_dtp_embd = 128
+        n_ctp_embd = 0
+        n_dtp_embd = 0
     
         lat_min = 52.6
         lat_max = 67.1
@@ -91,16 +91,16 @@ class Config():
         lon_size = 1180
         sog_size = 30
         cog_size = 72
-        ctp_size = 72
-        dtp_size = 10 # bins = [0, 5, 10, 20, 40, 80, 160, 320, 640, 1280, float("inf")]
+        ctp_size = 0
+        dtp_size = 0 # bins = [0, 5, 10, 20, 40, 80, 160, 320, 640, 1280, float("inf")]
 
         
         n_lat_embd = 512
         n_lon_embd = 512
         n_sog_embd = 128
         n_cog_embd = 128
-        n_ctp_embd = 128
-        n_dtp_embd = 128
+        n_ctp_embd = 0
+        n_dtp_embd = 0
     
         lat_min = 53.1
         lat_max = 60.3

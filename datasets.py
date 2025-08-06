@@ -30,7 +30,8 @@ class AISDataset(Dataset):
                  l_data, 
                  max_seqlen=96,
                  dtype=torch.float32,
-                 device=torch.device("cpu")):
+                 device=torch.device("cpu"),
+                 model_type=None):
         """
         Args
             l_data: list of dictionaries, each element is an AIS trajectory. 
@@ -44,7 +45,8 @@ class AISDataset(Dataset):
         self.max_seqlen = max_seqlen
         self.device = device
         
-        self.l_data = l_data 
+        self.l_data = l_data
+        self.model_type = model_type 
 
     def __len__(self):
         return len(self.l_data)
@@ -61,11 +63,17 @@ class AISDataset(Dataset):
             time_start: timestamp of the starting time of the trajectory.
         """
         V = self.l_data[idx]
-        m_v = V["traj"][:,:6] # lat, lon, sog, cog, ctp, dtp
+        if not self.model_type == 'base':
+            m_v = V["traj"][:,:6] # lat, lon, sog, cog, ctp, dtp
+        else:
+            m_v = V["traj"][:,:4]
 #         m_v[m_v==1] = 0.9999
         m_v[m_v>0.9999] = 0.9999
         seqlen = min(len(m_v), self.max_seqlen)
-        seq = np.zeros((self.max_seqlen,6))
+        if not self.model_type == 'base':
+            seq = np.zeros((self.max_seqlen,6))
+        else:
+            seq = np.zeros((self.max_seqlen,4))
         seq[:seqlen,:] = m_v[:seqlen,:]
         seq = torch.tensor(seq, dtype=torch.float32)
         
@@ -88,7 +96,8 @@ class AISDataset_grad(Dataset):
                  dlon_max=0.04,
                  max_seqlen=96,
                  dtype=torch.float32,
-                 device=torch.device("cpu")):
+                 device=torch.device("cpu"),
+                 model_type=None):
         """
         Args
             l_data: list of dictionaries, each element is an AIS trajectory. 
@@ -107,7 +116,8 @@ class AISDataset_grad(Dataset):
         self.max_seqlen = max_seqlen
         self.device = device
         
-        self.l_data = l_data 
+        self.l_data = l_data
+        self.model_type = model_type  
 
     def __len__(self):
         return len(self.l_data)
@@ -124,10 +134,16 @@ class AISDataset_grad(Dataset):
             time_start: timestamp of the starting time of the trajectory.
         """
         V = self.l_data[idx]
-        m_v = V["traj"][:,:6] # lat, lon, sog, cog, ctp, dtp
+        if not self.model_type == 'base':
+            m_v = V["traj"][:,:6] # lat, lon, sog, cog, ctp, dtp
+        else:
+            m_v = V["traj"][:,:4]
         m_v[m_v==1] = 0.9999
         seqlen = min(len(m_v), self.max_seqlen)
-        seq = np.zeros((self.max_seqlen,6))
+        if not self.model_type == 'base':
+            seq = np.zeros((self.max_seqlen,6))
+        else:
+            seq = np.zeros((self.max_seqlen,4))
         # lat and lon
         seq[:seqlen,:2] = m_v[:seqlen,:2] 
         # dlat and dlon

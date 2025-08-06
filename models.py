@@ -426,3 +426,153 @@ class TrAISformer(nn.Module):
         else:
             return logits, loss
         
+class BaseTrAISformer(TrAISformer):
+    """Transformer dla AIS bez kanałów ctp i dtp."""
+
+    def __init__(self, config, partition_model=None):
+        super().__init__(config, partition_model)
+        del self.ctp_emb, self.dtp_emb
+        self.full_size = (
+            self.lat_size +
+            self.lon_size +
+            self.sog_size +
+            self.cog_size
+        )
+        # nadpisujemy buffory rozmiarów tak, aby były długości 4
+        self.register_buffer(
+            "att_sizes",
+            torch.tensor([
+                self.lat_size,
+                self.lon_size,
+                self.sog_size,
+                self.cog_size
+            ], dtype=torch.long)
+        )
+        self.register_buffer(
+            "emb_sizes",
+            torch.tensor([
+                self.n_lat_embd,
+                self.n_lon_embd,
+                self.n_sog_embd,
+                self.n_cog_embd
+            ], dtype=torch.long)
+        )
+        # nadpisujemy głowę dekodera – teraz zwraca `full_size=4` kanały
+        self.head = nn.Linear(config.n_embd, self.full_size, bias=False)
+
+
+    def forward(self, x, masks=None, with_targets=False, return_loss_tuple=False):
+        """
+        Args:
+            x: a Tensor of size (batchsize, seqlen, 4). x has been truncated 
+                to [0,1).
+            masks: a Tensor of the same size of x. masks[idx] = 0. if 
+                x[idx] is a padding.
+            with_targets: if True, inputs = x[:,:-1,:], targets = x[:,1:,:], 
+                otherwise inputs = x.
+        Returns: 
+            logits, loss
+        """
+        
+        if self.mode in ("mlp_pos","mlp",):
+            idxs, idxs_uniform = x, x # use the real-values of x.
+        else:            
+            # Convert to indexes
+            idxs, idxs_uniform = self.to_indexes(x, mode=self.partition_mode)
+        
+        if with_targets:
+            inputs = idxs[:,:-1,:].contiguous()
+            targets = idxs[:,1:,:].contiguous()
+            targets_uniform = idxs_uniform[:,1:,:].contiguous()
+            inputs_real = x[:,:-1,:].contiguous()
+            targets_real = x[:,1:,:].contiguous()
+        else:
+            inputs_real = x
+            inputs = idxs
+            targets = None
+            
+        batchsize, seqlen, _ = inputs.size()
+        assert seqlen <= self.max_seqlen, "Cannot forward, model block size is exhausted."
+
+        # forward the GPT model
+        lat_embeddings = self.lat_emb(inputs[:,:,0]) # (bs, seqlen, lat_size)
+        lon_embeddings = self.lon_emb(inputs[:,:,1]) 
+        sog_embeddings = self.sog_emb(inputs[:,:,2]) 
+        cog_embeddings = self.cog_emb(inputs[:,:,3])      
+        token_embeddings = torch.cat((lat_embeddings, lon_embeddings, sog_embeddings, cog_embeddings),dim=-1)
+            
+        position_embeddings = self.pos_emb[:, :seqlen, :] # each position maps to a (learnable) vector (1, seqlen, n_embd)
+        fea = self.drop(token_embeddings + position_embeddings)
+        fea = self.blocks(fea)
+        fea = self.ln_f(fea) # (bs, seqlen, n_embd)
+        logits = self.head(fea) # (bs, seqlen, full_size) or (bs, seqlen, n_embd)
+        
+        lat_logits, lon_logits, sog_logits, cog_logits =\
+            torch.split(logits, (self.lat_size, self.lon_size, self.sog_size, self.cog_size), dim=-1)
+        
+        # Calculate the loss
+        loss = None
+        loss_tuple = None
+        if targets is not None:
+
+            sog_loss = F.cross_entropy(sog_logits.view(-1, self.sog_size), 
+                                       targets[:,:,2].view(-1), 
+                                       reduction="none").view(batchsize,seqlen)
+            cog_loss = F.cross_entropy(cog_logits.view(-1, self.cog_size), 
+                                       targets[:,:,3].view(-1), 
+                                       reduction="none").view(batchsize,seqlen)
+            lat_loss = F.cross_entropy(lat_logits.view(-1, self.lat_size), 
+                                       targets[:,:,0].view(-1), 
+                                       reduction="none").view(batchsize,seqlen)
+            lon_loss = F.cross_entropy(lon_logits.view(-1, self.lon_size), 
+                                       targets[:,:,1].view(-1), 
+                                       reduction="none").view(batchsize,seqlen)                     
+
+            if self.blur:
+                lat_probs = F.softmax(lat_logits, dim=-1) 
+                lon_probs = F.softmax(lon_logits, dim=-1)
+                sog_probs = F.softmax(sog_logits, dim=-1)
+                cog_probs = F.softmax(cog_logits, dim=-1)
+
+                for _ in range(self.blur_n):
+                    blurred_lat_probs = self.blur_module(lat_probs.reshape(-1,1,self.lat_size)).reshape(lat_probs.shape)
+                    blurred_lon_probs = self.blur_module(lon_probs.reshape(-1,1,self.lon_size)).reshape(lon_probs.shape)
+                    blurred_sog_probs = self.blur_module(sog_probs.reshape(-1,1,self.sog_size)).reshape(sog_probs.shape)
+                    blurred_cog_probs = self.blur_module(cog_probs.reshape(-1,1,self.cog_size)).reshape(cog_probs.shape)
+
+                    blurred_lat_loss = F.nll_loss(blurred_lat_probs.view(-1, self.lat_size),
+                                                  targets[:,:,0].view(-1),
+                                                  reduction="none").view(batchsize,seqlen)
+                    blurred_lon_loss = F.nll_loss(blurred_lon_probs.view(-1, self.lon_size),
+                                                  targets[:,:,1].view(-1),
+                                                  reduction="none").view(batchsize,seqlen)
+                    blurred_sog_loss = F.nll_loss(blurred_sog_probs.view(-1, self.sog_size),
+                                                  targets[:,:,2].view(-1),
+                                                  reduction="none").view(batchsize,seqlen)
+                    blurred_cog_loss = F.nll_loss(blurred_cog_probs.view(-1, self.cog_size),
+                                                  targets[:,:,3].view(-1),
+                                                  reduction="none").view(batchsize,seqlen)
+
+                    lat_loss += self.blur_loss_w*blurred_lat_loss
+                    lon_loss += self.blur_loss_w*blurred_lon_loss
+                    sog_loss += self.blur_loss_w*blurred_sog_loss
+                    cog_loss += self.blur_loss_w*blurred_cog_loss
+
+                    lat_probs = blurred_lat_probs
+                    lon_probs = blurred_lon_probs
+                    sog_probs = blurred_sog_probs
+                    cog_probs = blurred_cog_probs
+                    
+
+            loss_tuple = (lat_loss, lon_loss, sog_loss, cog_loss)
+            loss = sum(loss_tuple)
+        
+            if masks is not None:
+                loss = (loss*masks).sum(dim=1)/masks.sum(dim=1)
+        
+            loss = loss.mean()
+        
+        if return_loss_tuple:
+            return logits, loss, loss_tuple
+        else:
+            return logits, loss
